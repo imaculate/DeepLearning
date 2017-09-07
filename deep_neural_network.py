@@ -2,6 +2,8 @@ import numpy as np
 from util import relu, sigmoid, relu_backward, sigmoid_backward, dictionary_to_vector,vector_to_dictionary
 import matplotlib as plt
 
+"""L layer neural network"""
+
 def initialize_params(layer_dims, type="random"):
     """
     Arguments:
@@ -94,7 +96,7 @@ def forward_prop(X, parameters):
 
     caches = []
     A = X
-    L = len(parameters)                   # number of layers in the neural network
+    L = len(parameters)/2              # number of layers in the neural network
 
     # Implement [LINEAR -> RELU]*(L-1). Add "cache" to the "caches" list.
     for l in range(1, L):
@@ -110,6 +112,7 @@ def forward_prop(X, parameters):
     assert(AL.shape == (1,X.shape[1]))
 
     return AL, caches
+
 def compute_cost(AL, Y):
     """
     Implement the cost function defined by equation (7).
@@ -302,9 +305,6 @@ def gradient_check(parameters, gradients, X, Y, epsilon = 1e-7):
     return difference
 
 
-def forward_prop_with_dropout(X, parameters, keep_prob):
-    pass
-
 def compute_cost_with_regularization(AL, Y, parameters, lambd):
     """
     Implement the cost function with L2 regularization. See formula (2) above.
@@ -329,8 +329,94 @@ def compute_cost_with_regularization(AL, Y, parameters, lambd):
     return cost
 
 
-def back_prop_with_dropout(X, Y, cache, keep_prob):
-    pass
+def forward_prop_with_dropout(X, parameters, keep_prob):
+    caches = []
+    A = X
+    L = len(parameters)/2              # number of layers in the neural network
+
+    # Implement [LINEAR -> RELU]*(L-1). Add "cache" to the "caches" list.
+    for l in range(1, L):
+        A_prev = A
+        A, cache = linear_activation_forward(A_prev, parameters['W'+str(l)], parameters['b'+str(l)], activation = "relu")
+        D = np.random.rand(A.shape[0], A.shape[1])                                         # Step 1: initialize matrix D1 = np.random.rand(..., ...)
+        D = D < keep_prob                                        # Step 2: convert entries of D1 to 0 or 1 (using keep_prob as the threshold)
+        A = np.multiply(A, D)                                         # Step 3: shut down some neurons of A1
+        A = np.divide(A, keep_prob)                                        # Step 4: scale the value of neurons that haven't been shut down
+        cache = cache,D
+        caches.append(cache)
+
+    # Implement LINEAR -> SIGMOID. Add "cache" to the "caches" list.
+    AL, cache = linear_activation_forward(A, parameters['W'+str(L)], parameters['b'+str(L)], activation = "sigmoid")
+    caches.append(cache)
+
+    assert(AL.shape == (1,X.shape[1]))
+
+    return AL, caches
+
+def linear_activation_backward_with_dropout(dA, cache, activation, keep_prob = 1, lambd=0):
+    """
+    Implement the backward propagation for the LINEAR->ACTIVATION layer.
+
+    Arguments:
+    dA -- post-activation gradient for current layer l
+    cache -- tuple of values (linear_cache, activation_cache) we store for computing backward propagation efficiently
+    activation -- the activation to be used in this layer, stored as a text string: "sigmoid" or "relu"
+
+    Returns:
+    dA_prev -- Gradient of the cost with respect to the activation (of the previous layer l-1), same shape as A_prev
+    dW -- Gradient of the cost with respect to W (current layer l), same shape as W
+    db -- Gradient of the cost with respect to b (current layer l), same shape as b
+    """
+    linear_cache, activation_cache, D = cache
+    dA = np.divide(np.multiply(dA, D), keep_prob)
+
+    if activation == "relu":
+        dZ = relu_backward(dA, activation_cache)
+        dA_prev, dW, db = linear_backward(dZ, linear_cache, lambd)
+
+    elif activation == "sigmoid":
+        dZ = sigmoid_backward(dA, activation_cache)
+        dA_prev, dW, db = linear_backward(dZ, linear_cache, lambd)
+
+    return dA_prev, dW, db
+
+
+def back_prop_with_dropout(AL, Y, caches, keep_prob, lambd=0):
+    """
+    Implements the backward propagation of our baseline model to which we added dropout.
+
+    Arguments:
+    X -- input dataset, of shape (2, number of examples)
+    Y -- "true" labels vector, of shape (output size, number of examples)
+    cache -- cache output from forward_propagation_with_dropout()
+    keep_prob - probability of keeping a neuron active during drop-out, scalar
+
+    Returns:
+    gradients -- A dictionary with the gradients with respect to each parameter, activation and pre-activation variables
+    """
+    grads = {}
+    L = len(caches) # the number of layers
+    m = AL.shape[1]
+    Y = Y.reshape(AL.shape) # after this line, Y is the same shape as AL
+
+    # Initializing the backpropagation
+    dAL = - (np.divide(Y, AL) - np.divide(1 - Y, 1 - AL))
+
+    # Lth layer (SIGMOID -> LINEAR) gradients. Inputs: "AL, Y, caches". Outputs: "grads["dAL"], grads["dWL"], grads["dbL"]
+    current_cache = caches[L-1]
+    grads["dA" + str(L)], grads["dW" + str(L)], grads["db" + str(L)] = linear_activation_backward(dAL, current_cache, activation = "sigmoid", lambd=lambd)
+
+    for l in reversed(range(L-1)):
+        # lth layer: (RELU -> LINEAR) gradients.
+        # Inputs: "grads["dA" + str(l + 2)], caches". Outputs: "grads["dA" + str(l + 1)] , grads["dW" + str(l + 1)] , grads["db" + str(l + 1)]
+        current_cache = caches[l]
+        linear_cache, activation_cache,D = current_cache
+        dA_prev_temp, dW_temp, db_temp = linear_activation_backward_with_dropout(grads["dA" + str(l + 2)], current_cache, activation = "relu", lambd=lambd)
+        grads["dA" + str(l + 1)] = dA_prev_temp
+        grads["dW" + str(l + 1)] = dW_temp
+        grads["db" + str(l + 1)] = db_temp
+
+    return grads
 
 def model(X, Y, learning_rate = 0.01, num_iterations = 15000, print_cost = True, grad_check = True, initialization = "random", keep_prob = 1, lambd = 0):
     """
@@ -381,7 +467,7 @@ def model(X, Y, learning_rate = 0.01, num_iterations = 15000, print_cost = True,
 
         # Print the loss every 1000 iterations
         if i%1000 == 0:
-            if grad_check:
+            if grad_check and keep_prob==1:
                 gradient_check(parameters, grads, X, Y, epsilon = 1e-7)
             if print_cost:
                 print("Cost after iteration {}: {}".format(i, cost))
