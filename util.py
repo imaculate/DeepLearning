@@ -7,7 +7,7 @@ def relu(x):
     return np.maximum(0,x),x #value  and cache
 
 def relu_backward(dA, activation_cache):
-    return np.ones(activation_cache.shape)* (activation_cache > 0)* dA
+    return np.multiply(dA, np.int64(activation_cache > 0))
 
 def sigmoid_backward(dA, activation_cache):
     sig = sigmoid(activation_cache)

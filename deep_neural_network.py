@@ -94,7 +94,7 @@ def forward_prop(X, parameters):
 
     caches = []
     A = X
-    L = len(parameters) // 2                  # number of layers in the neural network
+    L = len(parameters)                   # number of layers in the neural network
 
     # Implement [LINEAR -> RELU]*(L-1). Add "cache" to the "caches" list.
     for l in range(1, L):
@@ -131,7 +131,7 @@ def compute_cost(AL, Y):
     return cost
 
 
-def linear_backward(dZ, cache):
+def linear_backward(dZ, cache, lambd=0):
     """
     Implement the linear portion of backward propagation for a single layer (layer l)
 
@@ -148,7 +148,7 @@ def linear_backward(dZ, cache):
     m = A_prev.shape[1]
 
     ### START CODE HERE ### (≈ 3 lines of code)
-    dW = np.dot(dZ, A_prev.T)/m
+    dW = np.dot(dZ, A_prev.T)/m + lambd * W/m
     db = np.sum(dZ, axis=1, keepdims=True)/m
     dA_prev = np.dot(W.T, dZ)
     ### END CODE HERE ###
@@ -159,7 +159,7 @@ def linear_backward(dZ, cache):
 
     return dA_prev, dW, db
 
-def linear_activation_backward(dA, cache, activation):
+def linear_activation_backward(dA, cache, activation, lambd = 0):
     """
     Implement the backward propagation for the LINEAR->ACTIVATION layer.
 
@@ -177,15 +177,15 @@ def linear_activation_backward(dA, cache, activation):
 
     if activation == "relu":
         dZ = relu_backward(dA, activation_cache)
-        dA_prev, dW, db = linear_backward(dZ, linear_cache)
+        dA_prev, dW, db = linear_backward(dZ, linear_cache, lambd)
 
     elif activation == "sigmoid":
         dZ = sigmoid_backward(dA, activation_cache)
-        dA_prev, dW, db = linear_backward(dZ, linear_cache)
+        dA_prev, dW, db = linear_backward(dZ, linear_cache, lambd)
 
     return dA_prev, dW, db
 
-def back_prop(AL, Y, caches):
+def back_prop(AL, Y, caches, lambd = 0):
     """
     Implement the backward propagation for the [LINEAR->RELU] * (L-1) -> LINEAR -> SIGMOID group
 
@@ -212,13 +212,13 @@ def back_prop(AL, Y, caches):
 
     # Lth layer (SIGMOID -> LINEAR) gradients. Inputs: "AL, Y, caches". Outputs: "grads["dAL"], grads["dWL"], grads["dbL"]
     current_cache = caches[L-1]
-    grads["dA" + str(L)], grads["dW" + str(L)], grads["db" + str(L)] = linear_activation_backward(dAL, current_cache, activation = "sigmoid")
+    grads["dA" + str(L)], grads["dW" + str(L)], grads["db" + str(L)] = linear_activation_backward(dAL, current_cache, activation = "sigmoid", lambd=lambd)
 
     for l in reversed(range(L-1)):
         # lth layer: (RELU -> LINEAR) gradients.
         # Inputs: "grads["dA" + str(l + 2)], caches". Outputs: "grads["dA" + str(l + 1)] , grads["dW" + str(l + 1)] , grads["db" + str(l + 1)]
         current_cache = caches[l]
-        dA_prev_temp, dW_temp, db_temp = linear_activation_backward(grads["dA" + str(l + 2)], current_cache, activation = "relu")
+        dA_prev_temp, dW_temp, db_temp = linear_activation_backward(grads["dA" + str(l + 2)], current_cache, activation = "relu", lambd=lambd)
         grads["dA" + str(l + 1)] = dA_prev_temp
         grads["dW" + str(l + 1)] = dW_temp
         grads["db" + str(l + 1)] = db_temp
@@ -248,89 +248,6 @@ def update_parameters(parameters, grads, learning_rate):
     ### END CODE HERE ###
 
     return parameters
-
-
-def model(X, Y, learning_rate = 0.01, num_iterations = 15000, print_cost = True, initialization = "he"):
-    """
-    Implements a three-layer neural network: LINEAR->RELU->LINEAR->RELU->LINEAR->SIGMOID.
-
-    Arguments:
-    X -- input data, of shape (2, number of examples)
-    Y -- true "label" vector (containing 0 for red dots; 1 for blue dots), of shape (1, number of examples)
-    learning_rate -- learning rate for gradient descent
-    num_iterations -- number of iterations to run gradient descent
-    print_cost -- if True, print the cost every 1000 iterations
-    initialization -- flag to choose which initialization to use ("zeros","random" or "he")
-
-    Returns:
-    parameters -- parameters learnt by the model
-    """
-
-    grads = {}
-    costs = [] # to keep track of the loss
-    m = X.shape[1] # number of examples
-    layers_dims = [X.shape[0], 10, 5, 1]
-
-    # Initialize parameters dictionary.
-    parameters = initialize_params(layers_dims)
-
-    # Loop (gradient descent)
-
-    for i in range(0, num_iterations):
-
-        # Forward propagation: LINEAR -> RELU -> LINEAR -> RELU -> LINEAR -> SIGMOID.
-        a3, cache = forward_prop(X, parameters)
-
-        # Loss
-        cost = compute_cost(a3, Y)
-
-        # Backward propagation.
-        grads = back_prop(X, Y, cache)
-
-        # Update parameters.
-        parameters = update_parameters(parameters, grads, learning_rate)
-
-        # Print the loss every 1000 iterations
-        if print_cost and i % 1000 == 0:
-            print("Cost after iteration {}: {}".format(i, cost))
-            costs.append(cost)
-
-    # plot the loss
-    plt.plot(costs)
-    plt.ylabel('cost')
-    plt.xlabel('iterations (per hundreds)')
-    plt.title("Learning rate =" + str(learning_rate))
-    plt.show()
-
-    return parameters
-
-
-def predict(X, Y, params):
-    AL, _ = forward_prop(X,params)
-    classes = (AL > 0.5).astype(int)
-    accuracy = np.mean(classes[0,:] == Y[0,:])*100
-    print("Accuracy is "+ accuracy)
-    return classes
-
-
-
-def plot_decision_boundary(model, X, y):
-    # Set min and max values and give it some padding
-    x_min, x_max = X[0, :].min() - 1, X[0, :].max() + 1
-    y_min, y_max = X[1, :].min() - 1, X[1, :].max() + 1
-    h = 0.01
-    # Generate a grid of points with distance h between them
-    xx, yy = np.meshgrid(np.arange(x_min, x_max, h), np.arange(y_min, y_max, h))
-    # Predict the function value for the whole grid
-    Z = model(np.c_[xx.ravel(), yy.ravel()])
-    Z = Z.reshape(xx.shape)
-    # Plot the contour and training examples
-    plt.contourf(xx, yy, Z, cmap=plt.cm.Spectral)
-    plt.ylabel('x2')
-    plt.xlabel('x1')
-    plt.scatter(X[0, :], X[1, :], c=y, cmap=plt.cm.Spectral)
-    plt.show()
-
 
 def gradient_check(parameters, gradients, X, Y, epsilon = 1e-7):
     """
@@ -383,3 +300,109 @@ def gradient_check(parameters, gradients, X, Y, epsilon = 1e-7):
         print ("\033[92m" + "Your backward propagation works perfectly fine! difference = " + str(difference) + "\033[0m")
 
     return difference
+
+
+def forward_prop_with_dropout(X, parameters, keep_prob):
+    pass
+
+def compute_cost_with_regularization(AL, Y, parameters, lambd):
+    """
+    Implement the cost function with L2 regularization. See formula (2) above.
+
+    Arguments:
+    AL -- post-activation, output of forward propagation, of shape (output size, number of examples)
+    Y -- "true" labels vector, of shape (output size, number of examples)
+    parameters -- python dictionary containing parameters of the model
+
+    Returns:
+    cost - value of the regularized loss function (formula (2))
+    """
+    m = Y.shape[1]
+    cross_entropy_cost = compute_cost(AL, Y) # This gives you the cross-entropy part of the cost
+    L2_regularization_cost = 0.0
+    for key in parameters.keys():
+        if key.startswith("W"):
+            L2_regularization_cost = np.sum(np.square(parameters[key]))
+    L2_regularization_cost *= lambd /(2*m)
+    cost = cross_entropy_cost + L2_regularization_cost
+
+    return cost
+
+
+def back_prop_with_dropout(X, Y, cache, keep_prob):
+    pass
+
+def model(X, Y, learning_rate = 0.01, num_iterations = 15000, print_cost = True, grad_check = True, initialization = "random", keep_prob = 1, lambd = 0):
+    """
+    Implements a three-layer neural network: LINEAR->RELU->LINEAR->RELU->LINEAR->SIGMOID.
+
+    Arguments:
+    X -- input data, of shape (2, number of examples)
+    Y -- true "label" vector (containing 0 for red dots; 1 for blue dots), of shape (1, number of examples)
+    learning_rate -- learning rate for gradient descent
+    num_iterations -- number of iterations to run gradient descent
+    print_cost -- if True, print the cost every 1000 iterations
+    initialization -- flag to choose which initialization to use ("zeros","random" or "he")
+
+    Returns:
+    parameters -- parameters learnt by the model
+    """
+
+    grads = {}
+    costs = [] # to keep track of the loss
+    m = X.shape[1] # number of examples
+    layers_dims = [X.shape[0], 10, 5, 1]
+
+    # Initialize parameters dictionary.
+    parameters = initialize_params(layers_dims, initialization)
+
+    # Loop (gradient descent)
+
+    for i in range(0, num_iterations):
+        if keep_prob == 1:
+            AL, cache = forward_prop(X, parameters)
+        elif keep_prob < 1:
+            AL, cache = forward_prop_with_dropout(X, parameters, keep_prob)
+
+        # Cost function
+        if lambd == 0:
+            cost = compute_cost(AL, Y)
+        else:
+            cost = compute_cost_with_regularization(AL, Y, parameters, lambd)
+
+        # Backward propagation.
+        if keep_prob == 1:
+            grads = back_prop(X, Y, cache , lambd=lambd)
+        elif keep_prob < 1:
+            grads = back_prop_with_dropout(X, Y, cache, keep_prob)
+
+        # Update parameters.
+        parameters = update_parameters(parameters, grads, learning_rate)
+
+        # Print the loss every 1000 iterations
+        if i%1000 == 0:
+            if grad_check:
+                gradient_check(parameters, grads, X, Y, epsilon = 1e-7)
+            if print_cost:
+                print("Cost after iteration {}: {}".format(i, cost))
+                costs.append(cost)
+
+    # plot the loss
+    plt.plot(costs)
+    plt.ylabel('cost')
+    plt.xlabel('iterations (per hundreds)')
+    plt.title("Learning rate =" + str(learning_rate))
+    plt.show()
+
+    return parameters
+
+
+def predict(X, Y, params):
+    AL, _ = forward_prop(X,params)
+    classes = (AL > 0.5).astype(int)
+    accuracy = np.mean(classes[0,:] == Y[0,:])*100
+    print("Accuracy is "+ accuracy)
+    return classes
+
+
+
