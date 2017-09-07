@@ -1,5 +1,6 @@
 import numpy as np
-from util import relu, sigmoid, relu_backward, sigmoid_backward, dictionary_to_vector,vector_to_dictionary
+from util import relu, sigmoid, relu_backward, sigmoid_backward, dictionary_to_vector,vector_to_dictionary, \
+    random_mini_batches
 import matplotlib as plt
 
 """L layer neural network"""
@@ -207,7 +208,6 @@ def back_prop(AL, Y, caches, lambd = 0):
     """
     grads = {}
     L = len(caches) # the number of layers
-    m = AL.shape[1]
     Y = Y.reshape(AL.shape) # after this line, Y is the same shape as AL
 
     # Initializing the backpropagation
@@ -228,7 +228,7 @@ def back_prop(AL, Y, caches, lambd = 0):
 
     return grads
 
-def update_parameters(parameters, grads, learning_rate):
+def update_parameters_with_gd(parameters, grads, learning_rate):
     """
     Update parameters using gradient descent
 
@@ -332,7 +332,7 @@ def compute_cost_with_regularization(AL, Y, parameters, lambd):
 def forward_prop_with_dropout(X, parameters, keep_prob):
     caches = []
     A = X
-    L = len(parameters)/2              # number of layers in the neural network
+    L = len(parameters)//2              # number of layers in the neural network
 
     # Implement [LINEAR -> RELU]*(L-1). Add "cache" to the "caches" list.
     for l in range(1, L):
@@ -418,7 +418,157 @@ def back_prop_with_dropout(AL, Y, caches, keep_prob, lambd=0):
 
     return grads
 
-def model(X, Y, learning_rate = 0.01, num_iterations = 15000, print_cost = True, grad_check = True, initialization = "random", keep_prob = 1, lambd = 0):
+def initialize_velocity(parameters):
+    """
+    Initializes the velocity as a python dictionary with:
+                - keys: "dW1", "db1", ..., "dWL", "dbL"
+                - values: numpy arrays of zeros of the same shape as the corresponding gradients/parameters.
+    Arguments:
+    parameters -- python dictionary containing your parameters.
+                    parameters['W' + str(l)] = Wl
+                    parameters['b' + str(l)] = bl
+
+    Returns:
+    v -- python dictionary containing the current velocity.
+                    v['dW' + str(l)] = velocity of dWl
+                    v['db' + str(l)] = velocity of dbl
+    """
+
+    L = len(parameters) // 2 # number of layers in the neural networks
+    v = {}
+
+    # Initialize velocity
+    for l in range(L):
+        v["dW" + str(l+1)] = np.zeros(parameters['W' + str(l+1)].shape)
+        v["db" + str(l+1)] = np.zeros(parameters['b' + str(l+1)].shape)
+
+    return v
+
+def update_parameters_with_momentum(parameters, grads, v, beta, learning_rate):
+    """
+    Update parameters using Momentum
+
+    Arguments:
+    parameters -- python dictionary containing your parameters:
+                    parameters['W' + str(l)] = Wl
+                    parameters['b' + str(l)] = bl
+    grads -- python dictionary containing your gradients for each parameters:
+                    grads['dW' + str(l)] = dWl
+                    grads['db' + str(l)] = dbl
+    v -- python dictionary containing the current velocity:
+                    v['dW' + str(l)] = ...
+                    v['db' + str(l)] = ...
+    beta -- the momentum hyperparameter, scalar
+    learning_rate -- the learning rate, scalar
+
+    Returns:
+    parameters -- python dictionary containing your updated parameters
+    v -- python dictionary containing your updated velocities
+    """
+
+    L = len(parameters) // 2 # number of layers in the neural networks
+
+    # Momentum update for each parameter
+    for l in range(L):
+        # compute velocities
+        v["dW" + str(l+1)] = beta * v["dW" + str(l+1)] + (1-beta)* grads['dW' + str(l+1)]
+        v["db" + str(l+1)] = beta * v["db" + str(l+1)] + (1-beta)* grads['db' + str(l+1)]
+        # update parameters
+        parameters["W" + str(l+1)] = parameters["W" + str(l+1)] - learning_rate * v["dW" + str(l+1)]
+        parameters["b" + str(l+1)] = parameters["b" + str(l+1)] - learning_rate * v["db" + str(l+1)]
+
+    return parameters, v
+
+def initialize_adam(parameters) :
+    """
+    Initializes v and s as two python dictionaries with:
+                - keys: "dW1", "db1", ..., "dWL", "dbL"
+                - values: numpy arrays of zeros of the same shape as the corresponding gradients/parameters.
+
+    Arguments:
+    parameters -- python dictionary containing your parameters.
+                    parameters["W" + str(l)] = Wl
+                    parameters["b" + str(l)] = bl
+
+    Returns:
+    v -- python dictionary that will contain the exponentially weighted average of the gradient.
+                    v["dW" + str(l)] = ...
+                    v["db" + str(l)] = ...
+    s -- python dictionary that will contain the exponentially weighted average of the squared gradient.
+                    s["dW" + str(l)] = ...
+                    s["db" + str(l)] = ...
+
+    """
+
+    L = len(parameters) // 2 # number of layers in the neural networks
+    v = {}
+    s = {}
+
+    # Initialize v, s. Input: "parameters". Outputs: "v, s".
+    for l in range(L):
+        v["dW" + str(l+1)] = np.zeros(parameters["W" + str(l+1)].shape)
+        v["db" + str(l+1)] = np.zeros(parameters["b" + str(l+1)].shape)
+        s["dW" + str(l+1)] = np.zeros(parameters["W" + str(l+1)].shape)
+        s["db" + str(l+1)] = np.zeros(parameters["b" + str(l+1)].shape)
+
+    return v, s
+
+
+def update_parameters_with_adam(parameters, grads, v, s, t, learning_rate = 0.01,
+                                beta1 = 0.9, beta2 = 0.999,  epsilon = 1e-8):
+    """
+    Update parameters using Adam
+
+    Arguments:
+    parameters -- python dictionary containing your parameters:
+                    parameters['W' + str(l)] = Wl
+                    parameters['b' + str(l)] = bl
+    grads -- python dictionary containing your gradients for each parameters:
+                    grads['dW' + str(l)] = dWl
+                    grads['db' + str(l)] = dbl
+    v -- Adam variable, moving average of the first gradient, python dictionary
+    s -- Adam variable, moving average of the squared gradient, python dictionary
+    learning_rate -- the learning rate, scalar.
+    beta1 -- Exponential decay hyperparameter for the first moment estimates
+    beta2 -- Exponential decay hyperparameter for the second moment estimates
+    epsilon -- hyperparameter preventing division by zero in Adam updates
+
+    Returns:
+    parameters -- python dictionary containing your updated parameters
+    v -- Adam variable, moving average of the first gradient, python dictionary
+    s -- Adam variable, moving average of the squared gradient, python dictionary
+    """
+
+    L = len(parameters) // 2                 # number of layers in the neural networks
+    v_corrected = {}                         # Initializing first moment estimate, python dictionary
+    s_corrected = {}                         # Initializing second moment estimate, python dictionary
+
+    # Perform Adam update on all parameters
+    for l in range(L):
+        # Moving average of the gradients. Inputs: "v, grads, beta1". Output: "v".
+        v["dW" + str(l+1)] = beta1 * v["dW" + str(l+1)] + (1-beta1)* grads['dW' + str(l+1)]
+        v["db" + str(l+1)] = beta1 * v["db" + str(l+1)] + (1-beta1)* grads['db' + str(l+1)]
+
+        # Compute bias-corrected first moment estimate. Inputs: "v, beta1, t". Output: "v_corrected".
+        v_corrected["dW" + str(l+1)] = v["dW" + str(l+1)]/(1 - beta1**t)
+        v_corrected["db" + str(l+1)] = v["db" + str(l+1)]/(1 - beta1**t)
+
+        # Moving average of the squared gradients. Inputs: "s, grads, beta2". Output: "s".
+        s["dW" + str(l+1)] = beta2 * s["dW" + str(l+1)] + (1-beta2) * np.square(grads['dW' + str(l+1)])
+        s["db" + str(l+1)] = beta2 * s["db" + str(l+1)] + (1-beta2) * np.square(grads['db' + str(l+1)])
+
+        # Compute bias-corrected second raw moment estimate. Inputs: "s, beta2, t". Output: "s_corrected".
+        s_corrected["dW" + str(l+1)] = s["dW" + str(l+1)]/(1 - beta2**t)
+        s_corrected["db" + str(l+1)] = s["db" + str(l+1)]/(1 - beta2**t)
+
+        # Update parameters. Inputs: "parameters, learning_rate, v_corrected, s_corrected, epsilon". Output: "parameters".
+        parameters["W" + str(l+1)] = parameters["W" + str(l+1)] - learning_rate * v_corrected["dW" + str(l+1)]/np.sqrt(s_corrected["dW" + str(l+1)] + epsilon)
+        parameters["b" + str(l+1)] = parameters["b" + str(l+1)] - learning_rate * v_corrected["db" + str(l+1)]/np.sqrt(s_corrected["db" + str(l+1)] + epsilon)
+
+    return parameters, v, s
+
+def model(X, Y, learning_rate = 0.0007, num_epochs = 15000, print_cost = True, grad_check = True, initialization = "random",
+          keep_prob = 1, lambd = 0, optimizer="adam", mini_batch_size=64, beta1=0.9, beta2=0.999,epsilon = 1e-8, beta=0.9 ):
     """
     Implements a three-layer neural network: LINEAR->RELU->LINEAR->RELU->LINEAR->SIGMOID.
 
@@ -436,43 +586,63 @@ def model(X, Y, learning_rate = 0.01, num_iterations = 15000, print_cost = True,
 
     grads = {}
     costs = [] # to keep track of the loss
-    m = X.shape[1] # number of examples
     layers_dims = [X.shape[0], 10, 5, 1]
+    seed = 10
 
     # Initialize parameters dictionary.
     parameters = initialize_params(layers_dims, initialization)
 
+    # Initialize the optimizer
+    if optimizer == "gd":
+        pass # no initialization required for gradient descent
+    elif optimizer == "momentum":
+        v = initialize_velocity(parameters)
+    elif optimizer == "adam":
+        v, s = initialize_adam(parameters)
+
     # Loop (gradient descent)
+    for i in range(0, num_epochs):
+        seed = seed + 1
+        minibatches = random_mini_batches(X, Y, mini_batch_size, seed)
 
-    for i in range(0, num_iterations):
-        if keep_prob == 1:
-            AL, cache = forward_prop(X, parameters)
-        elif keep_prob < 1:
-            AL, cache = forward_prop_with_dropout(X, parameters, keep_prob)
+        for minibatch in minibatches:
+             # Select a minibatch
+            (minibatch_X, minibatch_Y) = minibatch
+            if keep_prob == 1:
+                AL, cache = forward_prop(minibatch_X, parameters)
+            elif keep_prob < 1:
+                AL, cache = forward_prop_with_dropout(minibatch_X, parameters, keep_prob)
 
-        # Cost function
-        if lambd == 0:
-            cost = compute_cost(AL, Y)
-        else:
-            cost = compute_cost_with_regularization(AL, Y, parameters, lambd)
+            # Cost function
+            if lambd == 0:
+                cost = compute_cost(AL, minibatch_Y)
+            else:
+                cost = compute_cost_with_regularization(AL, minibatch_Y, parameters, lambd)
 
-        # Backward propagation.
-        if keep_prob == 1:
-            grads = back_prop(X, Y, cache , lambd=lambd)
-        elif keep_prob < 1:
-            grads = back_prop_with_dropout(X, Y, cache, keep_prob)
+            # Backward propagation.
+            if keep_prob == 1:
+                grads = back_prop(AL, minibatch_Y, cache , lambd=lambd)
+            elif keep_prob < 1:
+                grads = back_prop_with_dropout(AL, minibatch_Y, cache, keep_prob)
 
-        # Update parameters.
-        parameters = update_parameters(parameters, grads, learning_rate)
+             # Update parameters
+            if optimizer == "gd":
+                parameters = update_parameters_with_gd(parameters, grads, learning_rate)
+            elif optimizer == "momentum":
+                parameters, v = update_parameters_with_momentum(parameters, grads, v, beta, learning_rate)
+            elif optimizer == "adam":
+                t = t + 1 # Adam counter
+                parameters, v, s = update_parameters_with_adam(parameters, grads, v, s,
+                                                               t, learning_rate, beta1, beta2,  epsilon)
 
-        # Print the loss every 1000 iterations
-        if i%1000 == 0:
-            if grad_check and keep_prob==1:
-                gradient_check(parameters, grads, X, Y, epsilon = 1e-7)
-            if print_cost:
-                print("Cost after iteration {}: {}".format(i, cost))
+            # Print the loss every 1000 iterations
+            if i%1000 == 0:
+                if grad_check and keep_prob==1:
+                    gradient_check(parameters, grads, X, Y, epsilon = 1e-7)
+                if print_cost:
+                    print("Cost after iteration {}: {}".format(i, cost))
+            if i % 100 == 0:
                 costs.append(cost)
-
     # plot the loss
     plt.plot(costs)
     plt.ylabel('cost')
