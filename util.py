@@ -1,17 +1,19 @@
 import numpy as np
 import math
 
-def sigmoid(x):
-    return 1/(1+np.exp(-x)),x
+def sigmoid(Z):
+    A = 1/(1+np.exp(-Z))
+    return A,Z
 
-def relu(x):
-    return np.maximum(0,x),x #value  and cache
+def relu(Z):
+    A = np.maximum(0,Z)
+    return A,Z #value  and cache
 
 def relu_backward(dA, activation_cache):
     return np.multiply(dA, np.int64(activation_cache > 0))
 
 def sigmoid_backward(dA, activation_cache):
-    sig = sigmoid(activation_cache)
+    sig,_ = sigmoid(activation_cache)
     return sig*(1-sig)*dA
 
 def dictionary_to_vector(parameters):
@@ -21,7 +23,6 @@ def dictionary_to_vector(parameters):
     keys = []
     first = True
     for key in parameters.keys():
-
         # flatten parameter
         new_vector = np.reshape(parameters[key], (-1,1))
         keys = keys + [key]*new_vector.shape[0]
@@ -34,20 +35,35 @@ def dictionary_to_vector(parameters):
 
     return theta, keys
 
+def gradients_to_vector(grads):
+    first = True
+    for key in grads.keys():
+        # flatten parameter
+        if key.startswith("dW") or key.startswith("db"):
+            new_vector = np.reshape(grads[key], (-1,1))
+
+            if first:
+                theta = new_vector
+            else:
+                theta = np.concatenate((theta, new_vector), axis=0)
+            first = False
+
+    return theta
+
 def vector_to_dictionary(theta, param_keys):
     """
     Unroll all our parameters dictionary from a single vector satisfying our specific required shape.
     """
     parameters = {}
     param_unique_keys = np.unique(param_keys)
-    L = len(param_unique_keys)
+    L = len(param_unique_keys) //2
     for key in param_unique_keys:
         parameters[key] = theta[np.where(np.isin(param_keys, key))]
     num_next = 1
-    for l in range(L-1, 0):
-        parameters['b' + str(l+1)] = parameters['b' + str(l+1)].reshape(num_next, 1)
-        parameters['W' + str(l+1)] =  parameters['W' + str(l+1)].reshape(num_next, -1)
-        num_next = parameters['W' + str(l+1)].shape[1]
+    for l in range(L, 0,-1):
+        parameters['b' + str(l)] = np.reshape(parameters['b' + str(l)],(num_next, 1))
+        parameters['W' + str(l)] = np.reshape(parameters['W' + str(l)],(num_next, -1))
+        num_next = parameters['W' + str(l)].shape[1]
 
     return parameters
 

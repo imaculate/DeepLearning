@@ -1,7 +1,7 @@
 import numpy as np
 from util import relu, sigmoid, relu_backward, sigmoid_backward, dictionary_to_vector,vector_to_dictionary, \
-    random_mini_batches
-import matplotlib as plt
+    random_mini_batches, gradients_to_vector
+import matplotlib.pyplot as plt
 
 """L layer neural network"""
 
@@ -97,7 +97,7 @@ def forward_prop(X, parameters):
 
     caches = []
     A = X
-    L = len(parameters)/2              # number of layers in the neural network
+    L = len(parameters)//2              # number of layers in the neural network
 
     # Implement [LINEAR -> RELU]*(L-1). Add "cache" to the "caches" list.
     for l in range(1, L):
@@ -184,8 +184,8 @@ def linear_activation_backward(dA, cache, activation, lambd = 0):
         dA_prev, dW, db = linear_backward(dZ, linear_cache, lambd)
 
     elif activation == "sigmoid":
-        dZ = sigmoid_backward(dA, activation_cache)
-        dA_prev, dW, db = linear_backward(dZ, linear_cache, lambd)
+         dZ = sigmoid_backward(dA, activation_cache)
+         dA_prev, dW, db = linear_backward(dZ, linear_cache, lambd)
 
     return dA_prev, dW, db
 
@@ -269,10 +269,8 @@ def gradient_check(parameters, gradients, X, Y, epsilon = 1e-7):
 
     # Set-up variables
     parameters_values, param_keys = dictionary_to_vector(parameters)
-    grad = dictionary_to_vector(gradients)
+    grad = gradients_to_vector(gradients)
     num_parameters = parameters_values.shape[0]
-    J_plus = np.zeros((num_parameters, 1))
-    J_minus = np.zeros((num_parameters, 1))
     gradapprox = np.zeros((num_parameters, 1))
 
     # Compute gradapprox
@@ -282,15 +280,16 @@ def gradient_check(parameters, gradients, X, Y, epsilon = 1e-7):
         # "_" is used because the function you have to outputs two parameters but we only care about the first one
         thetaplus =  np.copy(parameters_values)                                      # Step 1
         thetaplus[i] = thetaplus[i] + epsilon                                # Step 2
-        J_plus[i], _ = forward_prop(X, Y, vector_to_dictionary(thetaplus, param_keys))                                   # Step 3
+        AL_plus, _ = forward_prop(X, vector_to_dictionary(thetaplus, param_keys))                                   # Step 3
+        J_plus = compute_cost(AL_plus, Y)
 
         # Compute J_minus[i]. Inputs: "parameters_values, epsilon". Output = "J_minus[i]".
         thetaminus =  np.copy(parameters_values)                                     # Step 1
         thetaminus[i] = thetaminus[i] - epsilon                               # Step 2
-        J_minus[i], _ = forward_prop(X, Y, vector_to_dictionary(thetaminus, param_keys))                                 # Step 3
-
+        AL_minus, _ = forward_prop(X, vector_to_dictionary(thetaminus, param_keys))                                 # Step 3
+        J_minus = compute_cost(AL_minus, Y)
         # Compute gradapprox[i]
-        gradapprox[i] = np.divide(J_plus[i] - J_minus[i], thetaplus[i] - thetaminus[i])
+        gradapprox[i] = np.divide(J_plus - J_minus, 2*epsilon)
 
     # Compare gradapprox to backward propagation gradients by computing difference.
     numerator = np.linalg.norm(gradapprox - grad)                                           # Step 1'
@@ -598,6 +597,7 @@ def model(X, Y, learning_rate = 0.0007, num_epochs = 15000, print_cost = True, g
     elif optimizer == "momentum":
         v = initialize_velocity(parameters)
     elif optimizer == "adam":
+        t = 0
         v, s = initialize_adam(parameters)
 
     # Loop (gradient descent)
@@ -635,14 +635,14 @@ def model(X, Y, learning_rate = 0.0007, num_epochs = 15000, print_cost = True, g
                 parameters, v, s = update_parameters_with_adam(parameters, grads, v, s,
                                                                t, learning_rate, beta1, beta2,  epsilon)
 
-            # Print the loss every 1000 iterations
-            if i%1000 == 0:
-                if grad_check and keep_prob==1:
-                    gradient_check(parameters, grads, X, Y, epsilon = 1e-7)
-                if print_cost:
-                    print("Cost after iteration {}: {}".format(i, cost))
-            if i % 100 == 0:
-                costs.append(cost)
+        # Print the loss every 1000 iterations
+        if i%1000 == 0:
+            if grad_check and keep_prob==1:
+                gradient_check(parameters, grads, X, Y, epsilon = 1e-7)
+            if print_cost:
+                print("Cost after iteration {}: {}".format(i, cost))
+        if i % 100 == 0:
+            costs.append(cost)
     # plot the loss
     plt.plot(costs)
     plt.ylabel('cost')
@@ -657,8 +657,7 @@ def predict(X, Y, params):
     AL, _ = forward_prop(X,params)
     classes = (AL > 0.5).astype(int)
     accuracy = np.mean(classes[0,:] == Y[0,:])*100
-    print("Accuracy is "+ accuracy)
+    print("Accuracy is "+ str(accuracy))
     return classes
-
 
 

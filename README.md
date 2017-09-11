@@ -8,6 +8,7 @@ Features included:
 -minibatch training
 
 TODO:
+-cross validation
 -Batch normalization
 
 Usage:
